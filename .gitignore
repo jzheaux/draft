@@ -1,0 +1,30 @@
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node modules (if any)
+node_modules/
+
+# Build artifacts
+dist/
+build/
+
+# Logs
+*.log
+
+# Chrome extension packaging
+*.crx
+*.pem
+
+# Test files
+test/
+tests/
+spec/
