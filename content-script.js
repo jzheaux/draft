@@ -68,26 +68,194 @@
     const UIManager = {
         // Add Draft Issue button to GitHub UI
         addDraftButton() {
-            // Look for the "New Issue" button
+            // Look for the "New Issue" button on issues list page
             const newIssueButton = document.querySelector('a[href$="/issues/new"]');
-            if (!newIssueButton || document.querySelector('.draft-issue-btn')) {
-                return; // Button already exists or new issue button not found
+            if (newIssueButton && !document.querySelector('.draft-issue-btn')) {
+                // Create the Draft Issue button
+                const draftButton = document.createElement('a');
+                draftButton.className = 'btn btn-primary draft-issue-btn';
+                draftButton.href = '#';
+                draftButton.textContent = 'Draft Issue';
+                draftButton.style.marginLeft = '8px';
+                
+                draftButton.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.openDraftModal();
+                });
+
+                // Insert the button next to the New Issue button
+                newIssueButton.parentNode.insertBefore(draftButton, newIssueButton.nextSibling);
+            }
+        },
+
+        // Add Draft button to new issue page
+        addDraftButtonToNewIssuePage() {
+            if (document.querySelector('.draft-issue-btn-new')) {
+                return; // Already added
             }
 
-            // Create the Draft Issue button
-            const draftButton = document.createElement('a');
-            draftButton.className = 'btn btn-primary draft-issue-btn';
-            draftButton.href = '#';
-            draftButton.textContent = 'Draft Issue';
-            draftButton.style.marginLeft = '8px';
+            // Look for the Create issue button on new issue page
+            let createButton = document.querySelector('button[type="submit"]:contains("Create issue"), input[value*="Create issue"], button:contains("Create issue")');
+            
+            if (!createButton) {
+                // Try alternative selectors
+                const submitButtons = document.querySelectorAll('button[type="submit"], input[type="submit"]');
+                
+                submitButtons.forEach(btn => {
+                    if ((btn.textContent && btn.textContent.includes('Create')) || 
+                        (btn.value && btn.value.includes('Create'))) {
+                        createButton = btn;
+                    }
+                });
+            }
+            
+            if (!createButton) {
+                return; // Create button not found
+            }
+
+            // Create the Draft button
+            const draftButton = document.createElement('button');
+            draftButton.className = 'btn btn-secondary draft-issue-btn-new';
+            draftButton.type = 'button';
+            draftButton.textContent = 'Save as Draft';
+            draftButton.style.marginRight = '8px';
             
             draftButton.addEventListener('click', (e) => {
                 e.preventDefault();
+                this.saveDraftFromNewIssuePage();
+            });
+
+            // Insert the button before the Create button
+            createButton.parentNode.insertBefore(draftButton, createButton);
+        },
+
+        // Save draft from new issue page
+        saveDraftFromNewIssuePage() {
+            const titleInput = document.querySelector('input[name="issue[title]"], #issue_title');
+            const bodyInput = document.querySelector('textarea[name="issue[body]"], #issue_body');
+            
+            if (!titleInput) {
+                alert('Could not find issue title field');
+                return;
+            }
+
+            const title = titleInput.value.trim();
+            const body = bodyInput ? bodyInput.value.trim() : '';
+            
+            if (!title) {
+                alert('Please enter a title for the draft issue.');
+                titleInput.focus();
+                return;
+            }
+            
+            this.openDraftModal({
+                title: title,
+                body: body
+            });
+        },
+
+        // Add drafts section to issues page
+        addDraftsSection() {
+            if (document.querySelector('.drafts-section')) {
+                return; // Already added
+            }
+
+            // Find the issues container
+            const issuesContainer = document.querySelector('#js-issues-search-container, .js-issues-search-container, [data-testid="issues-list"]');
+            if (!issuesContainer) {
+                return;
+            }
+
+            // Create drafts section
+            const draftsSection = document.createElement('div');
+            draftsSection.className = 'drafts-section';
+            draftsSection.innerHTML = `
+                <div class="Box mb-3">
+                    <div class="Box-header">
+                        <h3 class="Box-title d-flex align-items-center">
+                            <svg class="octicon octicon-pencil mr-2" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+                                <path fill-rule="evenodd" d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 000-.354l-1.086-1.086zM11.189 6.25L9.75 4.81l-6.286 6.287a.25.25 0 00-.064.108l-.558 1.953 1.953-.558a.249.249 0 00.108-.064l6.286-6.286z"></path>
+                            </svg>
+                            Draft Issues
+                            <span class="Counter ml-2" id="draft-count">0</span>
+                        </h3>
+                        <div class="Box-btn-octicon">
+                            <button class="btn btn-sm btn-primary" id="new-draft-btn" type="button">New Draft</button>
+                        </div>
+                    </div>
+                    <div id="drafts-list" class="Box-body">
+                        <div class="blankslate">
+                            <p class="color-fg-muted">No draft issues yet. Create your first draft to get started.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Insert before the issues container
+            issuesContainer.parentNode.insertBefore(draftsSection, issuesContainer);
+
+            // Add event listeners
+            document.getElementById('new-draft-btn').addEventListener('click', () => {
                 this.openDraftModal();
             });
 
-            // Insert the button next to the New Issue button
-            newIssueButton.parentNode.insertBefore(draftButton, newIssueButton.nextSibling);
+            // Load and display drafts
+            this.loadDraftsIntoSection();
+        },
+
+        // Load drafts into the section
+        async loadDraftsIntoSection() {
+            const drafts = await DraftManager.getDrafts();
+            const draftsList = document.getElementById('drafts-list');
+            const draftCount = document.getElementById('draft-count');
+            
+            if (!draftsList || !draftCount) return;
+
+            const draftEntries = Object.values(drafts);
+            draftCount.textContent = draftEntries.length;
+
+            if (draftEntries.length === 0) {
+                draftsList.innerHTML = `
+                    <div class="blankslate">
+                        <p class="color-fg-muted">No draft issues yet. Create your first draft to get started.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const draftsHtml = draftEntries.slice(0, 3).map(draft => `
+                <div class="Box-row d-flex">
+                    <div class="flex-auto">
+                        <h4 class="h5 mb-1">
+                            <a href="#drafts/${draft.id}" class="Link--primary">${draft.title}</a>
+                        </h4>
+                        <p class="color-fg-muted text-small mb-0">
+                            Updated ${new Date(draft.updatedAt || draft.createdAt).toLocaleDateString()}
+                        </p>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <button class="btn btn-sm btn-outline edit-draft-btn" data-draft-id="${draft.id}" type="button">Edit</button>
+                    </div>
+                </div>
+            `).join('');
+
+            draftsList.innerHTML = draftsHtml + 
+                (draftEntries.length > 3 ? `
+                    <div class="Box-row">
+                        <a href="#drafts" class="btn btn-sm btn-block">View all ${draftEntries.length} drafts</a>
+                    </div>
+                ` : '');
+
+            // Add event listeners for edit buttons
+            document.querySelectorAll('.edit-draft-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const draftId = e.target.dataset.draftId;
+                    const draft = drafts[draftId];
+                    if (draft) {
+                        this.openDraftModal(draft);
+                    }
+                });
+            });
         },
         
         // Open draft creation modal
@@ -184,6 +352,11 @@
                     this.showDraftsView();
                 }
                 
+                // Refresh drafts section if on issues page
+                if (document.querySelector('.drafts-section')) {
+                    this.loadDraftsIntoSection();
+                }
+                
                 // Show success message
                 this.showNotification(`Draft ${existingDraft ? 'updated' : 'saved'} successfully!`);
             } catch (error) {
@@ -202,6 +375,11 @@
                     // Refresh drafts view if we're currently viewing drafts
                     if (window.location.hash.startsWith('#drafts')) {
                         this.showDraftsView();
+                    }
+                    
+                    // Refresh drafts section if on issues page
+                    if (document.querySelector('.drafts-section')) {
+                        this.loadDraftsIntoSection();
                     }
                     
                     this.showNotification('Draft deleted successfully!');
@@ -428,9 +606,14 @@
             return;
         }
         
-        // Add draft button to issues page
-        if (window.location.pathname.includes('/issues') && !window.location.pathname.includes('/issues/new')) {
+        // Add features based on current page
+        if (window.location.pathname.includes('/issues/new')) {
+            // On new issue page - add draft button next to create button
+            UIManager.addDraftButtonToNewIssuePage();
+        } else if (window.location.pathname.endsWith('/issues') || window.location.pathname.includes('/issues?')) {
+            // On issues list page - add draft button and drafts section
             UIManager.addDraftButton();
+            UIManager.addDraftsSection();
         }
         
         // Handle hash-based navigation
@@ -450,8 +633,15 @@
                 }
             });
             
-            if (shouldRerun && window.location.pathname.includes('/issues') && !window.location.pathname.includes('/issues/new')) {
-                setTimeout(() => UIManager.addDraftButton(), 100);
+            if (shouldRerun) {
+                setTimeout(() => {
+                    if (window.location.pathname.includes('/issues/new')) {
+                        UIManager.addDraftButtonToNewIssuePage();
+                    } else if (window.location.pathname.endsWith('/issues') || window.location.pathname.includes('/issues?')) {
+                        UIManager.addDraftButton();
+                        UIManager.addDraftsSection();
+                    }
+                }, 100);
             }
         });
         
